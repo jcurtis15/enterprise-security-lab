@@ -1,3 +1,29 @@
- git add .gitignore
-git commit -m "Add .gitignore with common ignores"
-git push
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+*.temp
+
+# Editor files
+.vscode/
+.idea/
+
+# Typora (optional backups if any)
+*.bak
+
+# VirtualBox files (VERY IMPORTANT)
+*.vdi
+*.vbox
+*.vbox-prev
+*.log
+
+# ISO files
+*.iso
+
+# Cache
+*.cache
