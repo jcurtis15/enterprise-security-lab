@@ -113,7 +113,7 @@ Repeat this process for bob and itadmin to ensure consistent policy behavior acr
 
 > ⚠️ Initial policy application issues were encountered due to OU scope misalignment.
 
-> See [Troubleshooting: GPO Scope and Filtering](../troubleshooting/gpo-scope-and-filtering.md)
+> See [Troubleshooting: GPO Scope and Filtering](../../troubleshooting/gpo-scope-and-filtering.md)
 
 ### Step 6: Verify Results
 
@@ -129,7 +129,7 @@ Repeat this process for bob and itadmin to ensure consistent policy behavior acr
 
 > ⚠️ Additional issues were encountered when configuring Security Filtering, which temporarily prevented the GPO from applying.
 
-> See [Troubleshooting: GPO Scope and Filtering](../troubleshooting/gpo-scope-and-filtering.md)
+> See [Troubleshooting: GPO Scope and Filtering](../../troubleshooting/gpo-scope-and-filtering.md)
 
 ### Conclusion
 
