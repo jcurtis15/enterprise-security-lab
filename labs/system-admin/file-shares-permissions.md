@@ -106,7 +106,7 @@ To correct this issue:
 3. Uncheck **Share this folder**
 4. Click **Apply** → **OK**
 
-> ⚠️ See [Troubleshooting: File Share Permission Bypass](../troubleshooting/file-share-permission-bypass.md)
+> ⚠️ See [Troubleshooting: File Share Permission Bypass](../../troubleshooting/file-share-permission-bypass.md)
 
 ### Step 7: Validate Final Access
 
