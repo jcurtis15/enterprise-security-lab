@@ -1,174 +1,164 @@
-# Splunk Forwarder Setup and Log Forwarding
+# Splunk Brute Force Detection Lab
 
 ## Overview
 
-This lab demonstrates the configuration of centralized log collection using the Splunk Universal Forwarder. The forwarder was installed on a client machine (CLIENT01) and configured to send Windows Event Logs to a centralized Splunk instance on SRV01.
+This lab demonstrates how to detect brute force login activity using Splunk by analyzing Windows Security Event logs.
 
-This lab also included troubleshooting steps to resolve configuration issues preventing log ingestion.
+Using logs collected from CLIENT01, multiple failed login attempts (Event ID 4625) were correlated with successful logins (Event ID 4624) to identify potential account compromise scenarios.
 
-## Objective
+This lab builds on the centralized logging pipeline established in previous labs and introduces detection engineering concepts within a SIEM.
 
-- Install Splunk Universal Forwarder on CLIENT01
-- Configure forwarding to SRV01
-- Enable monitoring of Windows Event Logs
-- Verify centralized log ingestion in Splunk
-- Troubleshoot configuration issues preventing log forwarding
+## Objectives
+
+- Generate brute force login activity on CLIENT01
+- Identify failed and successful login events in Splunk
+- Correlate Event ID 4625 and 4624
+- Build detection logic using Splunk Processing Language (SPL)
+- Apply time-based analysis to simulate real attack behavior
 
 ## Environment
 
 - Domain: corp.local
 - Domain Controller: DC01
 - Management Server: SRV01 (Splunk Enterprise)
-- Client Machine: CLIENT01 (Splunk Universal Forwarder)
+- Client Machine: CLIENT01 (Windows 11, domain joined)
 - Network: LAB-NET (Internal) + NAT (Internet access)
 
 ## Steps Performed
 
-### Step 1: Prepare Network Connectivity
-
-CLIENT01 did not initially have internet access required to download the Splunk Universal Forwarder.
-
-To resolve this:
-
-1. Powered off CLIENT01
-2. Opened **VirtualBox** → **Settings** → **Network**
-3. Verified:
-   - Adapter 1 → Internal Network (`NET-LAB`)
-4. Enabled Adapter 2:
-   - Attached to: **NAT**
-5. Started CLIENT01
-6. Verified internet connectivity
-
-```cmd
-ipconfig
-ping 8.8.8.8
-```
-
-> 💡 Adapter 1 maintains domain communication, while Adapter 2 provides internet access.
-
-### Step 2: Install Splunk Universal Forwarder
+### Step 1: Simulate Brute Force Activity
 
 On CLIENT01:
 
-1. Downloaded Splunk Universal Forwarder
-2. Ran installer
-3. Selected: 
+1. Locked or logged out of the system
+2. Attempted login using:
 
 ```text
-On-Premises Splunk Enterprise Instance
+CORP\alice
 ```
 
-4. Entered: 
-   - Server: `SRV01` IP (e.g., 192.168.56.11)
-   - Port: `9997`
-5. Completed installation
+3. Entered incorrect password multiple times (5-10 attempts)
+4. Successfully logged in after failed attempts
 
-### Step 3: Enable Receiving on SRV01
+> 💡 This creates a realistic brute force pattern:
+>
+> Multiple failures followed by a successful login.
 
-On SRV01:
-
-1. Opened Splunk Web
-2. Navigated to:
-
-```text
-Settings → Forwarding and Receiving
-```
-
-3. Selected:
-
-```text
-Configure Receiving → New Receiving Port
-```
-
-4. Entered:
-
-```text
-9997
-```
-
-### Step 4: Configure Log Inputs on CLIENT01
-
-Created configuration files in:
-
-```text
-C:\Program Files\SplunkUniversalForwarder\etc\system\local
-```
-
-#### inputs.conf
-
-```text
-[WinEventLog://Application]
-disabled = 0
-index = main
-
-[WinEventLog://System]
-disabled = 0
-index = main
-
-[WinEventLog://Security]
-disabled = 0
-index = main
-```
-
-#### outputs.conf
-
-```text
-[tcpout]
-defaultGroup = default-autolb-group
-
-[tcpout:default-autolb-group]
-server = 192.168.56.11:9997
-```
-
-### Step 5: Restart Forwarder
-
-```cmd
-net stop splunkforwarder
-net start splunkforwarder
-```
-
-### Step 6: Verify Log Ingestion
+### Step 2: Verify Event Logs in Splunk
 
 On SRV01:
 
 ```spl
-index=* | stats count by host, sourcetype
+index=* host=CLIENT01 (EventCode=4624 OR EventCode=4625)
+| table _time, EventCode, Account_Name, Source_Network_Address
+| sort - _time
 ```
 
 Observed:
 
-- Logs from both:
-  - SRV01
-  - CLIENT01
+- EventCode 4625 → Failed login attempts
+- EventCode 4624 → Successful login
 
-> ⚠️ Initial configuration issues prevented logs from being ingested from CLIENT01. This was resolved by recreating configuration files with proper formatting and file extensions.
-
-> See [Troubleshooting: Splunk Forwarder Log Ingestion Issues](../../troubleshooting/splunk-forwarder-issues.md)
-
-### Step 7: Validate Security Events
+### Step 3: Analyze Failed Login Activity
 
 ```spl
-index=main host=CLIENT01 sourcetype=WinEventLog:Security
+index=* EventCode=4625
+| stats count by Account_Name, Source_Network_Address
+| sort - count
+```
+
+> 💡 Identifies accounts experiencing repeated login failures.
+
+### Step 4: Apply Threshold for Detection
+
+```spl
+index=* EventCode=4625
+| stats count by Account_Name, Source_Network_Address
+| where count >= 5
+```
+
+> ⚠️ Threshold-based detection helps reduce noise and identify suspicious behavior
+
+### Step 5: Correlate Failed and Successful Logins
+
+```spl
+index=* (EventCode=4625 OR EventCode=4624)
+| stats 
+    count(eval(EventCode=4625)) as failed_attempts,
+    count(eval(EventCode=4624)) as successful_logins
+    by Account_Name, Source_Network_Address
+| where failed_attempts >= 5 AND successful_logins >= 1
 ```
 
 Observed:
 
-- EventCode 4624 (successful login)
-- EventCode 4625 (failed login)
+- Accounts with repeated failures followed by success
+- Indicates potential brute force compromise
 
-### Step 8: Correlate Across Systems
+### Step 6: Add Time-Based Detection
 
 ```spl
-index=main (EventCode=4624 OR EventCode=4625) 
-| stats count by host, EventCode
+index=* (EventCode=4625 OR EventCode=4624)
+| bin _time span=5m
+| stats 
+    count(eval(EventCode=4625)) as failed_attempts,
+    count(eval(EventCode=4624)) as successful_logins
+    by _time, Account_Name, Source_Network_Address
+| where failed_attempts >= 5 AND successful_logins >= 1
 ```
 
-> 💡 This demonstrates centralized visibility across multiple systems.
+> 💡 This limits detection to activity within a 5-minute window, simulating real attack timing.
+
+### Step 7: Format Detection Output
+
+```spl
+index=* (EventCode=4625 OR EventCode=4624)
+| bin _time span=5m
+| stats 
+    count(eval(EventCode=4625)) as failed_attempts,
+    count(eval(EventCode=4624)) as successful_logins
+    by _time, Account_Name, Source_Network_Address
+| where failed_attempts >= 5 AND successful_logins >= 1
+| rename Account_Name as User, Source_Network_Address as Source_IP
+| sort - _time
+```
+
+### Detection Logic Summary
+
+Brute force activity was identified based on the following conditions:
+
+- 5 or more failed login attempts (Event ID 4625)
+- At least 1 successful login (Event ID 4624)
+- Occurring within a 5-minute time window
+- Matching user and source
+
+This logic simulates a common attack pattern where an attacker successfully guesses credentials after multiple failed attempts.
+
+### Challenges Encountered
+
+During this lab, several issues were encountered that impacted log ingestion and detection accuracy:
+
+- Logs from CLIENT01 were not appearing in Splunk in real time
+- Network connectivity to the Splunk receiving port (9997) was initially blocked 
+- The Splunk Universal Forwarder required a restart after resolving connectivity issues
+
+These issues prevented accurate correlation of login events and delayed detection results.
+
+> ⚠️ Detection accuracy depends heavily on reliable log ingestion. Issues at the data collection or transport layer can directly impact visibility and analysis.
+
+> See [Troubleshooting: Splunk Brute Force Detection Issues](../../troubleshooting/splunk-brute-force-issues.md)
 
 ### Conclusion
 
-The Splunk Universal Forwarder was successfully configured on CLIENT01, enabling centralized log collection into Splunk on SRV01. Windows Event Logs were ingested and made searchable across the environment.
+This lab demonstrates how brute force attacks can be detected through centralized log analysis in Splunk.
 
-This lab demonstrates the importance of centralized logging in security operations, allowing analysts to monitor and correlate activity across multiple systems rather than relying on isolated local logs.
+By correlating failed and successful login events and applying thresholds and time-based logic, it is possible to identify suspicious authentication behavior indicative of compromise.
 
-This setup forms the foundation for detection engineering, threat hunting, and SIEM-based monitoring.
+This lab introduces key SIEM concepts, including:
+
+- Event correlation
+- Threshold-based detection
+- Time-based analysis
+- Detection engineering using SPL
+
+This detection forms the foundation for alerting, dashboards, and more advanced threat detection use cases.
